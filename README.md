@@ -276,3 +276,14 @@ Para verificar alterações de código, execute `npm run lint` e `npm run build`
 - Variáveis `VITE_*` são incorporadas ao frontend e podem ser vistas pelo navegador; não armazene segredos nelas.
 - Em uma hospedagem da interface com React Router, configure o servidor para servir `index.html` nas rotas da aplicação, permitindo abrir URLs como `/pets/1` diretamente.
 - A configuração de credenciais do GCS pertence ao backend. A exibição das imagens exige que as URLs retornadas sejam acessíveis ao navegador conforme a política do bucket.
+
+## Como contribuir
+
+1. Crie uma branch a partir da versão atual de `main`, por exemplo: `git switch -c docs/atualiza-guia`.
+2. Faça alterações com um objetivo claro e atualize a documentação quando o comportamento ou a configuração mudar.
+3. Execute as verificações correspondentes à alteração, conforme a seção **Verificação manual**. Para mudanças apenas na documentação, confira os comandos, caminhos e links citados.
+4. Revise o conteúdo com `git diff` e verifique espaços indevidos com `git diff --check`.
+5. Adicione somente os arquivos relacionados à alteração e crie um commit com uma mensagem descritiva.
+6. Envie a branch ao seu remoto e abra um pull request explicando a mudança e como ela foi verificada.
+
+Antes de enviar, confirme com `git status` que nenhum arquivo de configuração local, senha ou chave foi incluído. Exemplos de configuração devem usar valores fictícios.
