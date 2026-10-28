@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { listarPets, type Pet } from '../services/petService';
 
 export default function PetList() {
@@ -8,74 +8,56 @@ export default function PetList() {
   const [erro, setErro] = useState('');
   const [imagensComFalha, setImagensComFalha] = useState<Set<number>>(() => new Set());
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
-    carregar();
+    let ativo = true;
+    listarPets().then(data => { if (ativo) setPets(data); })
+      .catch((e: any) => { if (ativo) setErro(e.message || 'Não foi possível carregar os pets.'); })
+      .finally(() => { if (ativo) setLoading(false); });
+    return () => { ativo = false; };
   }, []);
 
   async function carregar() {
     try {
       setLoading(true);
       setErro('');
-      const data = await listarPets();
-      setPets(data);
+      setPets(await listarPets());
     } catch (e: any) {
-      setErro(e.message || 'Erro ao carregar pets');
+      setErro(e.message || 'Não foi possível carregar os pets.');
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div style={{ padding: 20 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <h1>Pets</h1>
-        <button onClick={() => navigate('/pets/novo')}>Cadastrar novo pet</button>
-      </div>
-
-      {loading && <p>Carregando...</p>}
-      {erro && <p style={{ color: 'red' }}>{erro}</p>}
-      {!loading && !erro && pets.length === 0 && (
+    <main className="page-shell">
+      {location.state?.notice && <div className="notice notice-success" role="status"><span>{location.state.notice}</span><button className="notice-close" onClick={() => navigate(location.pathname, { replace: true, state: null })} aria-label="Dispensar mensagem">×</button></div>}
+      <header className="page-heading">
         <div>
-          <p>Nenhum pet cadastrado.</p>
-          <button onClick={() => navigate('/pets/novo')}>Cadastrar primeiro pet</button>
+          <span className="eyebrow">Cuidado e companhia</span>
+          <h1>Pets</h1>
+          <p className="page-lead">Encontre e acompanhe os pets cadastrados.</p>
         </div>
-      )}
+      </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
-        {pets.map((pet) => (
-          <div
-            key={pet.id}
-            onClick={() => navigate(`/pets/${pet.id}`)}
-            style={{ border: '1px solid #ddd', borderRadius: 8, overflow: 'hidden', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}
-          >
-            {pet.imagem_url && !imagensComFalha.has(pet.id) ? (
-              <img
-                src={pet.imagem_url}
-                alt={pet.nome}
-                onError={() => setImagensComFalha((atuais) => new Set(atuais).add(pet.id))}
-                style={{ width: '100%', height: 200, objectFit: 'cover' }}
-              />
-            ) : (
-              <div style={{ width: '100%', height: 200, background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {pet.imagem_url ? 'Imagem indisponível' : 'Sem imagem'}
-              </div>
-            )}
-            <div style={{ padding: 12 }}>
-              <h3 style={{ margin: '0 0 8px 0' }}>{pet.nome}</h3>
-              <p style={{ margin: 0, fontSize: 14 }}>Espécie: {pet.especie}</p>
-              {pet.raca && <p style={{ margin: 0, fontSize: 14 }}>Raça: {pet.raca}</p>}
-              {pet.porte && <p style={{ margin: 0, fontSize: 14 }}>Porte: {pet.porte}</p>}
-            </div>
-          </div>
-        ))}
-      </div>
+      {loading && <div className="pet-grid" aria-label="Carregando pets">{[1, 2, 3, 4].map(item => <div className="pet-skeleton" key={item} />)}</div>}
+      {!loading && erro && <section className="notice notice-error" role="alert"><div><strong>Não foi possível carregar a lista</strong><p>{erro}</p></div><button className="button button-secondary" onClick={() => void carregar()}>Tentar novamente</button></section>}
+      {!loading && !erro && pets.length === 0 && <section className="empty-state"><div className="empty-state-icon" aria-hidden="true">🐾</div><h2>Nenhum pet cadastrado</h2><p>Cadastre o primeiro pet para começar o acompanhamento.</p><button className="button button-primary" onClick={() => navigate('/pets/novo')}>Cadastrar primeiro pet</button></section>}
 
-      <style>{`
-        @media (max-width: 1200px) { div[style*="repeat(4, 1fr)"] { grid-template-columns: repeat(3, 1fr) !important; } }
-        @media (max-width: 900px) { div[style*="repeat(4, 1fr)"] { grid-template-columns: repeat(2, 1fr) !important; } }
-        @media (max-width: 600px) { div[style*="repeat(4, 1fr)"] { grid-template-columns: 1fr !important; } }
-      `}</style>
-    </div>
+      {!loading && !erro && pets.length > 0 && <div className="pet-grid">
+        {pets.map(pet => <button className="pet-card" key={pet.id} onClick={() => navigate(`/pets/${pet.id}`)} aria-label={`Ver detalhes de ${pet.nome}`}>
+          <span className="pet-card-image-wrap">
+            {pet.imagem_url && !imagensComFalha.has(pet.id) ? <img className="pet-card-image" src={pet.imagem_url} alt={`Foto de ${pet.nome}`} onError={() => setImagensComFalha(current => new Set(current).add(pet.id))} /> : <span className="pet-card-placeholder"><span aria-hidden="true">🐾</span><small>{pet.imagem_url ? 'Imagem indisponível' : 'Sem imagem'}</small></span>}
+          </span>
+          <span className="pet-card-content">
+            <strong className="pet-card-name">{pet.nome}</strong>
+            <span className="pet-card-species">{pet.especie}</span>
+            <span className="pet-card-meta">{pet.raca || 'Raça não informada'}<span className="meta-dot">·</span>{pet.porte || 'Porte não informado'}</span>
+          </span>
+          <span className="pet-card-arrow" aria-hidden="true">↗</span>
+        </button>)}
+      </div>}
+    </main>
   );
 }

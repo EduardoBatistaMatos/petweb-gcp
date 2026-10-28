@@ -3,6 +3,8 @@ package br.com.petshop.web;
 import br.com.petshop.config.AppConfig;
 import br.com.petshop.db.Database;
 import br.com.petshop.service.PetService;
+import br.com.petshop.repository.PetFotoRepository;
+import br.com.petshop.web.handler.PetFotoHandler;
 import br.com.petshop.web.handler.DocsHandler;
 import br.com.petshop.web.handler.HealthHandler;
 import br.com.petshop.web.handler.OpenApiHandler;
@@ -33,7 +35,8 @@ public final class ApiServer {
         this.executor = Executors.newVirtualThreadPerTaskExecutor();
         this.server.setExecutor(executor);
 
-        server.createContext("/pets", new PetHandler(petService));
+        PetFotoHandler petFotoHandler = new PetFotoHandler(new PetFotoRepository(database), petService);
+        server.createContext("/pets", new PetHandler(petService, petFotoHandler));
         server.createContext("/health", new HealthHandler(database));
         server.createContext("/docs", new DocsHandler(webDir.resolve("docs")));
         server.createContext("/openapi.yaml", new OpenApiHandler(webDir.resolve("openapi.yaml")));

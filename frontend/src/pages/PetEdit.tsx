@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import PetForm from '../components/PetForm';
-import { atualizarPet, buscarPet, type Pet, type PetPayload } from '../services/petService';
+import PetFormModal from '../components/PetFormModal';
+import { atualizarPet, buscarPet, enviarFotos, type Pet, type PetPayload } from '../services/petService';
 
 export default function PetEdit() {
   const { id } = useParams();
@@ -11,42 +12,30 @@ export default function PetEdit() {
   const [erro, setErro] = useState('');
 
   useEffect(() => {
-    carregar();
+    let ativo = true;
+    if (!id) return;
+    buscarPet(Number(id)).then(data => { if (ativo) setPet(data); })
+      .catch((e: any) => { if (ativo) setErro(e.message || 'Não foi possível carregar o pet.'); })
+      .finally(() => { if (ativo) setLoading(false); });
+    return () => { ativo = false; };
   }, [id]);
 
-  async function carregar() {
-    if (!id) return;
-    try {
-      setLoading(true);
-      setErro('');
-      const data = await buscarPet(Number(id));
-      setPet(data);
-    } catch (e: any) {
-      setErro(e.message || 'Erro ao carregar pet');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleSubmit(payload: PetPayload, imagem?: File | null) {
+  async function handleSubmit(payload: PetPayload, imagens: File[] = [], dataFotos = '') {
     if (!pet) return;
     try {
       setErro('');
-      const atualizado = await atualizarPet(pet.id, payload, imagem);
-      navigate(`/pets/${atualizado.id}`);
-    } catch (e: any) {
-      setErro(e.message || 'Erro ao atualizar pet');
-    }
+      const atualizado = await atualizarPet(pet.id, payload);
+      if (imagens.length) await enviarFotos(pet.id, imagens, dataFotos);
+      navigate(`/pets/${atualizado.id}`, { state: { notice: 'Alterações salvas com sucesso.' } });
+    } catch (e: any) { setErro(e.message || 'Não foi possível atualizar o pet.'); }
   }
 
-  if (loading) return <p style={{ padding: 20 }}>Carregando...</p>;
-  if (erro && !pet) return <p style={{ padding: 20, color: 'red' }}>{erro}</p>;
-  if (!pet) return <p style={{ padding: 20 }}>Pet não encontrado</p>;
+  if (!id) return <main className="page-shell"><div className="notice notice-error">Identificador de pet ausente.</div></main>;
+  if (loading) return <main className="page-shell"><div className="loading-panel"><span className="spinner" />Carregando dados do pet…</div></main>;
+  if (!pet) return <main className="page-shell"><div className="notice notice-error" role="alert"><div><strong>Não foi possível carregar o pet</strong><p>{erro || 'Pet não encontrado.'}</p></div><button className="button button-secondary" onClick={() => navigate('/pets')}>Voltar à lista</button></div></main>;
 
-  return (
-    <div>
-      {erro && <p style={{ color: 'red', textAlign: 'center' }}>{erro}</p>}
-      <PetForm mode="edit" initialData={pet} onSubmit={handleSubmit} onCancel={() => navigate(`/pets/${pet.id}`)} />
-    </div>
-  );
+  return <PetFormModal title={`Editar ${pet.nome}`}>
+    {erro && <div className="modal-error notice notice-error" role="alert">{erro}</div>}
+    <PetForm mode="edit" initialData={pet} onSubmit={handleSubmit} onCancel={() => navigate(`/pets/${pet.id}`)} />
+  </PetFormModal>;
 }

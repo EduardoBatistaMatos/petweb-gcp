@@ -176,6 +176,22 @@ Swagger UI são servidos localmente pela própria API, sem depender de CDN.
 | `PUT`    | `/pets/{id}`  | Atualiza todos os dados do pet    | `200`   | `400`, `404`, `413`, `415`, `500` |
 | `DELETE` | `/pets/{id}`  | Exclui um pet                     | `204`   | `400`, `404`, `500`     |
 | `GET`    | `/health`     | Verifica API e banco              | `200`   | `503`                   |
+| `GET`    | `/pets/{id}/fotos` | Lista fotos por data (mais recentes primeiro) | `200` | `404`, `500` |
+| `POST`   | `/pets/{id}/fotos` | Envia de 1 a 10 fotos multipart | `201` | `400`, `413`, `404`, `500` |
+| `PUT`    | `/pets/{id}/fotos/{fotoId}/principal` | Define a capa | `200` | `404`, `500` |
+| `DELETE` | `/pets/{id}/fotos/{fotoId}` | Exclui foto e objeto GCS | `204` | `400`, `404`, `500` |
+
+O envio usa `multipart/form-data` com campos repetidos `fotos` e um único
+`data_foto` (`YYYY-MM-DD`). Cada arquivo pode ter até 10 MiB e cada lote até
+10 arquivos. A primeira imagem do primeiro lote é marcada como capa. Ao excluir
+a capa, a foto mais recente remanescente é promovida automaticamente. Os objetos
+são enviados e removidos pelo backend; o campo `url` guarda apenas a referência.
+
+Antes de habilitar o histórico, aplique manualmente `sql/migration_pet_fotos.sql`
+no banco alvo. A migração mantém uma única tabela (`pet`) e adiciona `fotos`
+como JSONB, além de `img_principal` com a URL da capa. Se a tabela antiga
+`pet_foto` existir, a migração copia seus metadados para `pet.fotos` antes de
+removê-la. A aplicação não executa a migração.
 
 O `POST` retorna o cabeçalho `Location` com a URL do recurso criado.
 `DELETE` retorna `204` sem corpo.

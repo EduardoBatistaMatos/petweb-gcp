@@ -11,5 +11,8 @@ CREATE TABLE IF NOT EXISTS pet (
     responsavel       VARCHAR(150) NOT NULL,
     data_nascimento   DATE,
     data_insercao_img TIMESTAMP,
-    detalhes          TEXT
+    detalhes          TEXT,
+    imagem_url        TEXT,
+    fotos             JSONB NOT NULL DEFAULT '[]'::jsonb,
+    img_principal     TEXT
 );

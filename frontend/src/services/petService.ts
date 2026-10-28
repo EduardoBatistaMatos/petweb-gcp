@@ -25,15 +25,46 @@ export interface PetPayload {
   imagem_url?: string | null;
 }
 
+export interface PetFoto { id: string; pet_id: number; url: string; data_foto: string; img_principal: boolean }
+
+async function responseError(res: Response, fallback: string) {
+  if (res.ok) return;
+  const body = await res.text();
+  let message: string | undefined;
+  try {
+    const parsed = JSON.parse(body);
+    message = parsed.message;
+  } catch { /* resposta não JSON: usa o corpo bruto abaixo */ }
+  throw new Error(message || body || `${fallback} (HTTP ${res.status})`);
+}
+
+export async function listarFotos(petId: number): Promise<PetFoto[]> {
+  const res = await fetch(`${API_BASE_URL}/pets/${petId}/fotos`);
+  await responseError(res, 'Erro ao carregar fotos'); return res.json();
+}
+export async function enviarFotos(petId: number, files: File[], data: string): Promise<PetFoto[]> {
+  const form = new FormData(); files.forEach(file => form.append('fotos', file)); form.append('data_foto', data);
+  const res = await fetch(`${API_BASE_URL}/pets/${petId}/fotos`, { method: 'POST', body: form });
+  await responseError(res, 'Erro ao enviar fotos'); return res.json();
+}
+export async function definirFotoPrincipal(petId: number, fotoId: string): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/pets/${petId}/fotos/${fotoId}/principal`, { method: 'PUT' });
+  await responseError(res, 'Erro ao definir foto principal');
+}
+export async function excluirFoto(petId: number, fotoId: string): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/pets/${petId}/fotos/${fotoId}`, { method: 'DELETE' });
+  await responseError(res, 'Erro ao excluir foto');
+}
+
 export async function listarPets(): Promise<Pet[]> {
   const res = await fetch(`${API_BASE_URL}/pets`);
-  if (!res.ok) throw new Error('Erro ao listar pets');
+  await responseError(res, 'Erro ao listar pets');
   return res.json();
 }
 
 export async function buscarPet(id: number): Promise<Pet> {
   const res = await fetch(`${API_BASE_URL}/pets/${id}`);
-  if (!res.ok) throw new Error('Erro ao buscar pet');
+  await responseError(res, 'Erro ao buscar pet');
   return res.json();
 }
 

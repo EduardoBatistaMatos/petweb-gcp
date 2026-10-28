@@ -35,9 +35,15 @@ public final class PetHandler implements HttpHandler {
 
     private final PetService service;
     private final GoogleCloudStorageService storageService;
+    private final PetFotoHandler petFotoHandler;
 
     public PetHandler(PetService service) {
+        this(service, null);
+    }
+
+    public PetHandler(PetService service, PetFotoHandler petFotoHandler) {
         this.service = service;
+        this.petFotoHandler = petFotoHandler;
         GoogleCloudStorageService svc = null;
         try {
             svc = new GoogleCloudStorageService(StorageConfig.from(null));
@@ -51,6 +57,10 @@ public final class PetHandler implements HttpHandler {
     public void handle(HttpExchange exchange) throws IOException {
         String metodo = exchange.getRequestMethod().toUpperCase(Locale.ROOT);
         String caminho = normalizarCaminho(exchange.getRequestURI().getPath());
+        if (petFotoHandler != null && caminho.matches("^/pets/[^/]+/fotos(?:/.*)?$")) {
+            petFotoHandler.handle(exchange);
+            return;
+        }
         int status = 500;
         long inicio = System.nanoTime();
 
@@ -129,11 +139,14 @@ public final class PetHandler implements HttpHandler {
                 Pet petAtual = service.buscarPorId(id);
                 PetRequest requisicao = lerRequisicao(exchange, petAtual.imagemUrl());
                 Pet pet = service.atualizar(id, requisicao);
+                HttpUtils.enviarJson(exchange, 200, pet);
                 yield 200;
             }
             case "DELETE" -> {
                 Pet pet = service.buscarPorId(id);
-                if (storageService != null && pet.imagemUrl() != null && !pet.imagemUrl().isBlank()) {
+                if (petFotoHandler != null) {
+                    petFotoHandler.excluirArquivosDoPet(pet);
+                } else if (storageService != null && pet.imagemUrl() != null && !pet.imagemUrl().isBlank()) {
                     try {
                         storageService.deleteByUrl(pet.imagemUrl());
                     } catch (Exception e) {

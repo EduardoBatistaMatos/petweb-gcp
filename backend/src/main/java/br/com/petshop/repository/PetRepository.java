@@ -25,7 +25,14 @@ public final class PetRepository {
             data_nascimento, data_insercao_img, detalhes, imagem_url
             """.replaceAll("\\s+", " ").trim();
 
-    private static final String SELECT_BASE = "SELECT " + COLUNAS + " FROM pet";
+    // A capa fica na mesma linha do pet; a consulta não faz JOIN nem duplica linhas.
+    private static final String SELECT_BASE = """
+            SELECT p.id, p.nome, p.especie, p.raca, p.porte, p.responsavel,
+                   p.data_nascimento, p.data_insercao_img, p.detalhes,
+                   COALESCE(p.img_principal, p.imagem_url) AS imagem_url
+              FROM pet p
+            """;
+    private static final String SELECT_LEGADO = "SELECT " + COLUNAS + " FROM pet";
     private static final String INSERT = """
             INSERT INTO pet
                 (nome, especie, raca, porte, responsavel,
@@ -55,20 +62,36 @@ public final class PetRepository {
     }
 
     public List<Pet> findAll() throws SQLException {
+        try {
+            return listarComConsulta(SELECT_BASE + " ORDER BY p.id");
+        } catch (SQLException e) {
+            if (!"42P01".equals(e.getSQLState()) && !"42703".equals(e.getSQLState())) throw e;
+            // A tabela de fotos é uma migração opcional para o CRUD legado.
+            return listarComConsulta(SELECT_LEGADO + " ORDER BY id");
+        }
+    }
+
+    public Optional<Pet> findById(int id) throws SQLException {
+        try {
+            return buscarComConsulta(SELECT_BASE + " WHERE p.id = ?", id);
+        } catch (SQLException e) {
+            if (!"42P01".equals(e.getSQLState()) && !"42703".equals(e.getSQLState())) throw e;
+            return buscarComConsulta(SELECT_LEGADO + " WHERE id = ?", id);
+        }
+    }
+
+    private List<Pet> listarComConsulta(String sql) throws SQLException {
         List<Pet> pets = new ArrayList<>();
         try (Connection conexao = database.getConnection();
-             PreparedStatement stmt = conexao.prepareStatement(SELECT_BASE + " ORDER BY id");
+             PreparedStatement stmt = conexao.prepareStatement(sql);
              ResultSet rs = stmt.executeQuery()) {
-            while (rs.next()) {
-                pets.add(mapear(rs));
-            }
+            while (rs.next()) pets.add(mapear(rs));
         }
         return pets;
     }
 
-    public Optional<Pet> findById(int id) throws SQLException {
-        try (Connection conexao = database.getConnection();
-             PreparedStatement stmt = conexao.prepareStatement(SELECT_BASE + " WHERE id = ?")) {
+    private Optional<Pet> buscarComConsulta(String sql, int id) throws SQLException {
+        try (Connection conexao = database.getConnection(); PreparedStatement stmt = conexao.prepareStatement(sql)) {
             stmt.setInt(1, id);
             try (ResultSet rs = stmt.executeQuery()) {
                 return rs.next() ? Optional.of(mapear(rs)) : Optional.empty();

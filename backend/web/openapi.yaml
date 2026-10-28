@@ -1,59 +1,43 @@
 openapi: 3.0.3
 info:
   title: Petshop API
+  version: 1.1.0
   description: |
-    API RESTful para o CRUD de pets, implementada em Java puro (JDK HttpServer),
-    JDBC com PostgreSQL e documentação Swagger/OpenAPI.
-
-    A API utiliza JSON com nomes de campos em `snake_case`. As datas seguem o
-    formato ISO 8601: `data_nascimento` como `YYYY-MM-DD` e
-    `data_insercao_img` como `YYYY-MM-DDTHH:MM:SS`.
-  version: 1.0.0
-  license:
-    name: Uso acadêmico
+    API REST para cadastro e consulta de pets e gerenciamento do histórico fotográfico.
+    Os metadados das fotos ficam em `pet.fotos` (JSONB) e a URL da capa em
+    `pet.img_principal`; os arquivos binários ficam no Google Cloud Storage.
+    Upload e exclusão de objetos são feitos pelo backend.
 servers:
   - url: /
-    description: Servidor atual
-security: []
+    description: Servidor da aplicação
 tags:
   - name: Pets
-    description: Operações de cadastro, consulta, atualização e exclusão de pets
+  - name: Fotos
   - name: Sistema
-    description: Verificação de disponibilidade da API
 paths:
   /pets:
     get:
       tags: [Pets]
-      summary: Listar todos os pets
+      summary: Lista os pets
       operationId: listarPets
       responses:
         '200':
-          description: Lista de pets cadastrados
+          description: Pets cadastrados
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: '#/components/schemas/Pet'
-              example:
-                - id: 1
-                  nome: Rex
-                  especie: Cachorro
-                  raca: Labrador
-                  porte: Grande
-                  responsavel: Maria Silva
-                  data_nascimento: '2020-05-10'
-                  data_insercao_img: '2024-01-15T10:30:00'
-                  detalhes: Muito dócil e brincalhão.
         '500':
-          $ref: '#/components/responses/InternalServerError'
+          $ref: '#/components/responses/ErroInterno'
     post:
       tags: [Pets]
-      summary: Cadastrar um pet
+      summary: Cadastra um pet
       description: |
-        Aceita JSON (`application/json`) ou envio de formulário com imagem
-        (`multipart/form-data`). Ao enviar `imagem` (ou `image`/`foto`), o arquivo
-        é enviado ao Google Cloud Storage e a URL gerada é armazenada no PostgreSQL.
+        Aceita JSON ou multipart/form-data. O formulário multipart pode incluir
+        uma imagem legada no campo `imagem` (também aceita `image` ou `foto`).
+        Para cadastrar várias fotos no histórico, use `POST /pets/{id}/fotos`.
       operationId: criarPet
       requestBody:
         required: true
@@ -61,64 +45,36 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/PetRequest'
-            example:
-              nome: Rex
-              especie: Cachorro
-              raca: Labrador
-              porte: Grande
-              responsavel: Maria Silva
-              data_nascimento: '2020-05-10'
-              data_insercao_img: '2024-01-15T10:30:00'
-              detalhes: Muito dócil e brincalhão.
-              imagem_url: https://storage.googleapis.com/fatec-2026-grupo-d/exemplo.jpg
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/PetRequestMultipart'
-            example:
-              nome: Rex
-              especie: Cachorro
-              raca: Labrador
-              porte: Grande
-              responsavel: Maria Silva
-              data_nascimento: '2020-05-10'
-              detalhes: Muito dócil e brincalhão.
-              imagem: (arquivo binário)
+              $ref: '#/components/schemas/PetMultipart'
       responses:
         '201':
-          description: Pet cadastrado com sucesso
+          description: Pet criado
           headers:
             Location:
-              description: URL do recurso criado
+              description: Caminho do pet criado
               schema:
                 type: string
-              example: /pets/1
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Pet'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          $ref: '#/components/responses/RequisicaoInvalida'
         '413':
-          $ref: '#/components/responses/PayloadTooLarge'
+          $ref: '#/components/responses/ConteudoMuitoGrande'
         '415':
-          $ref: '#/components/responses/UnsupportedMediaType'
+          $ref: '#/components/responses/TipoNaoSuportado'
         '500':
-          $ref: '#/components/responses/InternalServerError'
+          $ref: '#/components/responses/ErroInterno'
   /pets/{id}:
     parameters:
-      - name: id
-        in: path
-        required: true
-        description: Identificador do pet
-        schema:
-          type: integer
-          format: int32
-          minimum: 1
-        example: 1
+      - $ref: '#/components/parameters/PetId'
     get:
       tags: [Pets]
-      summary: Buscar um pet pelo identificador
-      operationId: buscarPetPorId
+      summary: Busca um pet pelo identificador
+      operationId: buscarPet
       responses:
         '200':
           description: Pet encontrado
@@ -127,21 +83,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/Pet'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          $ref: '#/components/responses/RequisicaoInvalida'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/NaoEncontrado'
         '500':
-          $ref: '#/components/responses/InternalServerError'
+          $ref: '#/components/responses/ErroInterno'
     put:
       tags: [Pets]
-      summary: Atualizar os dados de um pet
-      description: |
-        Substitui todos os dados do pet. Os campos obrigatórios (`nome`,
-        `especie` e `responsavel`) devem ser enviados novamente. Campos
-        opcionais enviados como `null` ou string vazia são gravados como nulos.
-        Aceita JSON ou `multipart/form-data`. Ao enviar uma nova imagem, ela
-        substitui a anterior: a nova é enviada ao bucket e, após sucesso, a
-        imagem antiga é removida.
+      summary: Atualiza um pet
+      description: Substitui os dados enviados do pet; aceita JSON ou multipart/form-data.
       operationId: atualizarPet
       requestBody:
         required: true
@@ -149,302 +99,296 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/PetRequest'
-            example:
-              nome: Rex
-              especie: Cachorro
-              raca: Labrador
-              porte: Grande
-              responsavel: Maria Silva
-              data_nascimento: '2020-05-10'
-              data_insercao_img: '2024-06-20T09:00:00'
-              detalhes: Atualizado no sistema.
-              imagem_url: https://storage.googleapis.com/fatec-2026-grupo-d/exemplo.jpg
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/PetRequestMultipart'
-            example:
-              nome: Rex
-              especie: Cachorro
-              raca: Labrador
-              porte: Grande
-              responsavel: Maria Silva
-              data_nascimento: '2020-05-10'
-              detalhes: Atualizado no sistema.
-              imagem: (arquivo binário)
+              $ref: '#/components/schemas/PetMultipart'
       responses:
         '200':
-          description: Pet atualizado com sucesso
+          description: Pet atualizado
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Pet'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          $ref: '#/components/responses/RequisicaoInvalida'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/NaoEncontrado'
         '413':
-          $ref: '#/components/responses/PayloadTooLarge'
+          $ref: '#/components/responses/ConteudoMuitoGrande'
         '415':
-          $ref: '#/components/responses/UnsupportedMediaType'
+          $ref: '#/components/responses/TipoNaoSuportado'
         '500':
-          $ref: '#/components/responses/InternalServerError'
+          $ref: '#/components/responses/ErroInterno'
     delete:
       tags: [Pets]
-      summary: Excluir um pet
+      summary: Exclui um pet
+      description: O backend remove os arquivos associados do Google Cloud Storage antes de excluir o registro.
       operationId: excluirPet
       responses:
         '204':
-          description: Pet excluído com sucesso (sem conteúdo)
+          description: Pet e arquivos associados excluídos
         '400':
-          $ref: '#/components/responses/BadRequest'
+          $ref: '#/components/responses/RequisicaoInvalida'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/NaoEncontrado'
         '500':
-          $ref: '#/components/responses/InternalServerError'
+          $ref: '#/components/responses/ErroInterno'
+  /pets/{id}/fotos:
+    parameters:
+      - $ref: '#/components/parameters/PetId'
+    get:
+      tags: [Fotos]
+      summary: Lista o histórico fotográfico do pet
+      description: Retorna as fotos ordenadas por data decrescente e identificadas com a capa atual.
+      operationId: listarFotosPet
+      responses:
+        '200':
+          description: Fotos do pet
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PetFoto'
+        '400':
+          $ref: '#/components/responses/RequisicaoInvalida'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+    post:
+      tags: [Fotos]
+      summary: Adiciona uma ou mais fotos ao histórico
+      description: |
+        Envie de 1 a 10 imagens no campo multipart repetido `fotos` (o alias
+        `foto` também é aceito) e uma única `data_foto` no formato YYYY-MM-DD.
+        Cada arquivo pode ter até 10 MiB; o corpo do lote pode ter até 100 MiB
+        mais o overhead multipart. Os arquivos são enviados pelo backend ao GCS.
+        A primeira foto do pet é definida automaticamente como principal.
+      operationId: adicionarFotosPet
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [data_foto, fotos]
+              properties:
+                data_foto:
+                  type: string
+                  format: date
+                  description: Data associada a todas as fotos deste lote.
+                fotos:
+                  type: array
+                  minItems: 1
+                  maxItems: 10
+                  items:
+                    type: string
+                    format: binary
+                  description: Repita o campo fotos para enviar vários arquivos.
+      responses:
+        '201':
+          description: Fotos armazenadas e metadados persistidos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PetFoto'
+        '400':
+          $ref: '#/components/responses/RequisicaoInvalida'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+        '413':
+          $ref: '#/components/responses/ConteudoMuitoGrande'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+  /pets/{id}/fotos/{fotoId}/principal:
+    parameters:
+      - $ref: '#/components/parameters/PetId'
+      - $ref: '#/components/parameters/FotoId'
+    put:
+      tags: [Fotos]
+      summary: Define uma foto como principal
+      description: Atualiza a capa persistida do pet e retorna a coleção atualizada.
+      operationId: definirFotoPrincipal
+      responses:
+        '200':
+          description: Coleção atualizada com a nova foto principal
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PetFoto'
+        '400':
+          $ref: '#/components/responses/RequisicaoInvalida'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+  /pets/{id}/fotos/{fotoId}:
+    parameters:
+      - $ref: '#/components/parameters/PetId'
+      - $ref: '#/components/parameters/FotoId'
+    delete:
+      tags: [Fotos]
+      summary: Exclui uma foto do histórico
+      description: O backend exclui o objeto do GCS antes de remover os metadados. Se a capa for excluída, a foto mais recente restante vira principal; sem fotos restantes, o pet fica sem capa.
+      operationId: excluirFotoPet
+      responses:
+        '204':
+          description: Foto e objeto removidos
+        '400':
+          $ref: '#/components/responses/RequisicaoInvalida'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
   /health:
     get:
       tags: [Sistema]
-      summary: Verificar a disponibilidade da API e do banco
-      operationId: verificarSaude
+      summary: Verifica a disponibilidade da API e do banco
+      operationId: healthCheck
       responses:
         '200':
           description: API e banco disponíveis
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: ok
-                  database:
-                    type: string
-                    example: up
+                $ref: '#/components/schemas/Health'
         '503':
-          description: Banco de dados indisponível
+          description: Banco indisponível
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: degraded
-                  database:
-                    type: string
-                    example: down
+                $ref: '#/components/schemas/Health'
+        '405':
+          $ref: '#/components/responses/MetodoNaoPermitido'
 components:
+  parameters:
+    PetId:
+      name: id
+      in: path
+      required: true
+      description: Identificador inteiro positivo do pet.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+    FotoId:
+      name: fotoId
+      in: path
+      required: true
+      description: Identificador da foto persistida na coleção do pet.
+      schema:
+        type: string
+        maxLength: 64
   schemas:
     Pet:
       type: object
-      description: Pet persistido no banco de dados
-      additionalProperties: false
-      required:
-        - id
-        - nome
-        - especie
-        - responsavel
+      required: [id, nome, especie, responsavel]
       properties:
-        id:
-          type: integer
-          format: int32
-          example: 1
-        nome:
-          type: string
-          maxLength: 100
-          example: Rex
-        especie:
-          type: string
-          maxLength: 50
-          example: Cachorro
-        raca:
-          type: string
-          maxLength: 100
-          nullable: true
-          example: Labrador
-        porte:
-          type: string
-          maxLength: 30
-          nullable: true
-          example: Grande
-        responsavel:
-          type: string
-          maxLength: 150
-          example: Maria Silva
-        data_nascimento:
-          type: string
-          format: date
-          nullable: true
-          example: '2020-05-10'
-        data_insercao_img:
-          type: string
-          description: Data e hora local sem fuso horário, no formato ISO 8601 (TIMESTAMP sem time zone).
-          pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?$'
-          nullable: true
-          example: '2024-01-15T10:30:00'
-        detalhes:
-          type: string
-          nullable: true
-          example: Muito dócil e brincalhão.
+        id: { type: integer, format: int32 }
+        nome: { type: string }
+        especie: { type: string }
+        raca: { type: string, nullable: true }
+        porte: { type: string, nullable: true }
+        responsavel: { type: string }
+        data_nascimento: { type: string, format: date, nullable: true }
+        data_insercao_img: { type: string, format: date-time, nullable: true }
+        detalhes: { type: string, nullable: true }
         imagem_url:
           type: string
           nullable: true
-          description: URL da imagem armazenada no Google Cloud Storage
-          example: https://storage.googleapis.com/fatec-2026-grupo-d/exemplo.jpg
+          description: URL da foto principal para exibição da capa.
     PetRequest:
       type: object
-      description: Dados aceitos no cadastro e na atualização de um pet
-      additionalProperties: false
-      required:
-        - nome
-        - especie
-        - responsavel
+      required: [nome, especie, responsavel]
       properties:
-        nome:
-          type: string
-          maxLength: 100
-          example: Rex
-        especie:
-          type: string
-          maxLength: 50
-          example: Cachorro
-        raca:
-          type: string
-          maxLength: 100
-          nullable: true
-          example: Labrador
-        porte:
-          type: string
-          maxLength: 30
-          nullable: true
-          example: Grande
-        responsavel:
-          type: string
-          maxLength: 150
-          example: Maria Silva
-        data_nascimento:
-          type: string
-          format: date
-          nullable: true
-          example: '2020-05-10'
-        data_insercao_img:
-          type: string
-          description: Data e hora local sem fuso horário, no formato ISO 8601 (TIMESTAMP sem time zone).
-          pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?$'
-          nullable: true
-          example: '2024-01-15T10:30:00'
-        detalhes:
-          type: string
-          nullable: true
-          example: Muito dócil e brincalhão.
+        nome: { type: string }
+        especie: { type: string }
+        raca: { type: string, nullable: true }
+        porte: { type: string, nullable: true }
+        responsavel: { type: string }
+        data_nascimento: { type: string, format: date, nullable: true }
+        data_insercao_img: { type: string, format: date-time, nullable: true }
+        detalhes: { type: string, nullable: true }
         imagem_url:
           type: string
           nullable: true
-          description: URL da imagem armazenada no Google Cloud Storage
-          example: https://storage.googleapis.com/fatec-2026-grupo-d/exemplo.jpg
-    PetRequestMultipart:
+          description: URL preexistente para compatibilidade com clientes legados.
+    PetMultipart:
       type: object
-      description: Dados aceitos no cadastro e na atualização de um pet via multipart/form-data
-      additionalProperties: true
-      required:
-        - nome
-        - especie
-        - responsavel
+      required: [nome, especie, responsavel]
       properties:
-        nome:
-          type: string
-          maxLength: 100
-        especie:
-          type: string
-          maxLength: 50
-        raca:
-          type: string
-          maxLength: 100
-          nullable: true
-        porte:
-          type: string
-          maxLength: 30
-          nullable: true
-        responsavel:
-          type: string
-          maxLength: 150
-        data_nascimento:
-          type: string
-          format: date
-          nullable: true
-        data_insercao_img:
-          type: string
-          nullable: true
-        detalhes:
-          type: string
-          nullable: true
-        imagem_url:
-          type: string
-          nullable: true
+        nome: { type: string }
+        especie: { type: string }
+        raca: { type: string }
+        porte: { type: string }
+        responsavel: { type: string }
+        data_nascimento: { type: string, format: date }
+        data_insercao_img: { type: string, format: date-time }
+        detalhes: { type: string }
+        imagem_url: { type: string }
         imagem:
           type: string
           format: binary
-          description: Arquivo de imagem a ser enviado ao Google Cloud Storage
-        image:
-          type: string
-          format: binary
-        foto:
-          type: string
-          format: binary
+          description: Imagem legada opcional; aliases `image` e `foto` também são aceitos.
+    PetFoto:
+      type: object
+      required: [id, pet_id, url, data_foto, img_principal]
+      properties:
+        id: { type: string, description: Identificador único da foto dentro do histórico. }
+        pet_id: { type: integer, format: int32 }
+        url: { type: string, format: uri, description: URL pública ou assinada do objeto no GCS. }
+        data_foto: { type: string, format: date }
+        img_principal: { type: boolean }
+    Health:
+      type: object
+      required: [status, database]
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        database: { type: string, enum: [up, down] }
     Error:
       type: object
-      description: Resposta padrão de erro
       properties:
-        timestamp:
-          type: string
-          format: date-time
-          example: '2026-10-26T10:30:00.123-03:00'
-        status:
-          type: integer
-          example: 400
-        error:
-          type: string
-          example: Bad Request
-        message:
-          type: string
-          example: Dados inválidos.
-        path:
-          type: string
-          example: /pets
+        timestamp: { type: string, format: date-time }
+        status: { type: integer }
+        error: { type: string }
+        message: { type: string }
+        path: { type: string }
         details:
           type: array
-          items:
-            type: string
-          example:
-            - O campo 'nome' é obrigatório.
+          items: {}
   responses:
-    BadRequest:
-      description: Requisição inválida (JSON malformado, validação ou identificador inválido)
+    RequisicaoInvalida:
+      description: Identificador, campos, data, arquivo ou configuração de storage inválidos
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-    NotFound:
-      description: Pet não encontrado
+          schema: { $ref: '#/components/schemas/Error' }
+    NaoEncontrado:
+      description: Pet ou foto não encontrado
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-    PayloadTooLarge:
-      description: Corpo da requisição maior que 1 MiB
+          schema: { $ref: '#/components/schemas/Error' }
+    ConteudoMuitoGrande:
+      description: Limite de tamanho excedido
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-    UnsupportedMediaType:
-      description: Content-Type diferente de application/json
+          schema: { $ref: '#/components/schemas/Error' }
+    TipoNaoSuportado:
+      description: Content-Type não suportado
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-    InternalServerError:
-      description: Erro interno ou falha de conexão com o banco de dados
+          schema: { $ref: '#/components/schemas/Error' }
+    MetodoNaoPermitido:
+      description: Método HTTP não permitido
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
+          schema: { $ref: '#/components/schemas/Error' }
+    ErroInterno:
+      description: Erro interno ao acessar o banco ou processar a requisição
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
