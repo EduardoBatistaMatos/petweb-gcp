@@ -177,3 +177,102 @@ npm run preview  # pré-visualização do build
 ```
 
 Na pasta `backend`, `build.ps1` compila no Windows e `build.sh` compila em Linux/macOS. Não há atualmente um script de testes versionado na pasta do backend.
+
+## Estrutura de pastas
+
+```text
+petweb-gcp/
+|-- README.md
+|-- backend/
+|   |-- .env.example          # Modelo das variáveis de configuração
+|   |-- build.ps1 / build.sh  # Compilação Java
+|   |-- run.ps1               # Inicialização no Windows
+|   |-- lib/                  # Dependências Java
+|   |-- sql/                  # Schema e migração manual
+|   |-- src/main/java/br/com/petshop/
+|   |   |-- config/           # Configuração da aplicação
+|   |   |-- db/               # Conexão com PostgreSQL
+|   |   |-- model/            # Modelos e contratos de dados
+|   |   |-- repository/       # Persistência
+|   |   |-- service/          # Regras de negócio
+|   |   |-- storage/          # Integração com armazenamento
+|   |   `-- web/              # Handlers HTTP
+|   `-- web/                  # OpenAPI e Swagger UI
+`-- frontend/
+    |-- package.json          # Dependências e comandos npm
+    `-- src/                  # Interface React e integração com a API
+```
+
+## Preparar um banco novo
+
+Com o PostgreSQL instalado e os comandos `createdb` e `psql` no `PATH`, execute a partir da raiz do projeto:
+
+```bash
+createdb -h localhost -p 5432 -U postgres petshop
+psql -h localhost -p 5432 -U postgres -d petshop -v ON_ERROR_STOP=1 -f backend/sql/schema.sql
+```
+
+Os comandos podem solicitar a senha do usuário PostgreSQL. Ajuste host, porta, usuário e nome do banco conforme o seu ambiente e use os mesmos valores em `backend/.env`. Esse procedimento destina-se a uma base nova; para uma base existente, revise a estrutura antes de aplicar qualquer script. `CREATE TABLE IF NOT EXISTS` não acrescenta colunas a uma tabela já criada.
+
+## Exemplos de uso da API
+
+Os exemplos abaixo usam Bash e `curl`. No PowerShell, use `curl.exe` para evitar o alias de versões antigas e adapte as aspas e a continuação de linhas; o Swagger UI também permite executar essas requisições pelo navegador.
+
+Consultar a saúde da aplicação e listar pets:
+
+```bash
+curl http://localhost:8080/health
+curl http://localhost:8080/pets
+```
+
+Cadastrar um pet com os campos obrigatórios (`nome`, `especie` e `responsavel`):
+
+```bash
+curl -X POST http://localhost:8080/pets \
+  -H 'Content-Type: application/json' \
+  -d '{"nome":"Luna","especie":"Gato","responsavel":"Ana"}'
+```
+
+Utilize o identificador retornado pelo cadastro nas próximas requisições. O exemplo abaixo considera `id` igual a `1`:
+
+```bash
+curl http://localhost:8080/pets/1
+curl -X POST http://localhost:8080/pets/1/fotos \
+  -F 'data_foto=2026-10-28' \
+  -F 'fotos=@/caminho/para/luna.jpg'
+curl http://localhost:8080/pets/1/fotos
+```
+
+Repita o campo `-F 'fotos=@...'` para enviar várias imagens no mesmo lote, respeitando os limites descritos na seção de API. O upload depende da configuração do GCS.
+
+## Verificação manual
+
+Após iniciar os dois serviços:
+
+1. Consulte `/health` e confirme a disponibilidade do banco.
+2. Abra `/docs/` e verifique se a documentação da API carrega.
+3. Na interface, cadastre um pet e confirme sua presença na listagem.
+4. Edite os dados e confira se foram persistidos ao recarregar a página.
+5. Com o GCS configurado, envie fotos, consulte o histórico e troque a capa.
+6. Usando um pet de teste, exclua uma foto e depois o pet para conferir o fluxo de remoção.
+
+Para verificar alterações de código, execute `npm run lint` e `npm run build` em `frontend`, além do script de compilação correspondente ao seu sistema em `backend`. A compilação não substitui a verificação dos fluxos que dependem de PostgreSQL e GCS.
+
+## Solução de problemas
+
+| Sintoma | O que verificar |
+|---|---|
+| `java` ou `javac` não encontrado | Instale o JDK 21 ou superior, confira o `PATH` e execute `java -version` e `javac -version`. |
+| Falha de conexão com o banco | Confira se o PostgreSQL está ativo, se o banco existe e se host, porta, usuário e senha estão corretos. |
+| Erro de tabela ou coluna inexistente | Compare a base com `backend/sql/schema.sql`; em bases antigas, revise a migração manual antes de aplicá-la. |
+| Interface não consegue acessar a API | Confirme que o backend está ativo e confira `VITE_API_BASE_URL`; reinicie o Vite após alterar a configuração. |
+| Falha no upload de fotos | Confira o bucket, as credenciais, as permissões da conta de serviço e os limites de quantidade e tamanho dos arquivos. |
+| Porta já em uso | Libere a porta ou ajuste `SERVER_PORT`; se o endereço da API mudar, atualize também o frontend. |
+
+## Cuidados com configuração e publicação
+
+- Mantenha senhas, arquivos `.env` e chaves JSON fora dos commits. Use `backend/.env.example` como modelo sem credenciais reais.
+- O build do frontend é gerado com `npm run build`, e `npm run preview` permite conferi-lo localmente.
+- Variáveis `VITE_*` são incorporadas ao frontend e podem ser vistas pelo navegador; não armazene segredos nelas.
+- Em uma hospedagem da interface com React Router, configure o servidor para servir `index.html` nas rotas da aplicação, permitindo abrir URLs como `/pets/1` diretamente.
+- A configuração de credenciais do GCS pertence ao backend. A exibição das imagens exige que as URLs retornadas sejam acessíveis ao navegador conforme a política do bucket.
