@@ -1,0 +1,14 @@
+# Credenciais locais
+.env
+*.json
+!package*.json
+!tsconfig*.json
+
+# Artefatos de compilação e logs de teste
+build/
+*.log
+
+# IDEs
+.idea/
+.vscode/
+*.iml
